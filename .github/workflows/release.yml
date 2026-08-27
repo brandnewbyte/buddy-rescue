@@ -1,0 +1,99 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: buddy-rescue-linux-x86_64.tar.gz
+          - os: macos-latest
+            target: universal-apple-darwin
+            archive: buddy-rescue-macos-universal.tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: buddy-rescue-windows-x86_64.zip
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build Linux or Windows
+        if: matrix.target != 'universal-apple-darwin'
+        run: cargo build --release --locked --target "${{ matrix.target }}"
+
+      - name: Build universal macOS binary
+        if: matrix.target == 'universal-apple-darwin'
+        shell: bash
+        run: |
+          rustup target add x86_64-apple-darwin aarch64-apple-darwin
+          cargo build --release --locked --target x86_64-apple-darwin
+          cargo build --release --locked --target aarch64-apple-darwin
+          mkdir -p target/release
+          lipo -create \
+            target/x86_64-apple-darwin/release/buddy-rescue \
+            target/aarch64-apple-darwin/release/buddy-rescue \
+            -output target/release/buddy-rescue
+
+      - name: Package Unix release
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          staging="dist/buddy-rescue-${{ matrix.target }}"
+          mkdir -p "$staging"
+          if [ "${{ matrix.target }}" = "universal-apple-darwin" ]; then
+            cp target/release/buddy-rescue "$staging/"
+          else
+            cp "target/${{ matrix.target }}/release/buddy-rescue" "$staging/"
+          fi
+          cp README.md LICENSE-MIT LICENSE-APACHE "$staging/"
+          tar -C dist -czf "dist/${{ matrix.archive }}" "buddy-rescue-${{ matrix.target }}"
+
+      - name: Package Windows release
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $staging = "dist/buddy-rescue-${{ matrix.target }}"
+          New-Item -ItemType Directory -Force -Path $staging | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/buddy-rescue.exe" $staging
+          Copy-Item README.md, LICENSE-MIT, LICENSE-APACHE $staging
+          Compress-Archive -Path $staging -DestinationPath "dist/${{ matrix.archive }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: dist/${{ matrix.archive }}
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: dist
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
