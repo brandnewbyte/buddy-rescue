@@ -12,7 +12,7 @@ readme = "README.md"
 publish = false
 
 [dependencies]
-buddy-crypto-core = { git = "https://github.com/brandnewbyte/buddy-crypto-core", rev = "fcc6fe4febb55a85538a20aa94ca67bd9daa18fd" }
+buddy-crypto-core = { git = "https://github.com/brandnewbyte/buddy-crypto-core", tag = "v0.1.0" }
 clap = { version = "4.5", features = ["derive"] }
 csv = "1.3"
 percent-encoding = "2.3"
