@@ -17,7 +17,7 @@ change vault settings, or write beside the source database.
 
 ## Install
 
-Prebuilt releases will be published on the
+Prebuilt releases are published on the
 [GitHub releases page](https://github.com/brandnewbyte/buddy-rescue/releases).
 To build the current source:
 
@@ -27,6 +27,28 @@ cargo build --release --locked
 
 The binary is `target/release/buddy-rescue` on macOS and Linux, and
 `target\release\buddy-rescue.exe` on Windows.
+
+## Verify a download
+
+Every release archive carries a GitHub build provenance attestation, and each
+release publishes a `SHA256SUMS` file. The attestation is the stronger check:
+it proves the archive was produced by this repository's release workflow from a
+specific commit, so it cannot be forged by someone who only controls the
+release page.
+
+With the [GitHub CLI](https://cli.github.com):
+
+```shell
+gh attestation verify buddy-rescue-macos-universal.tar.gz \
+  --repo brandnewbyte/buddy-rescue
+```
+
+To check the published digests instead, download `SHA256SUMS` alongside the
+archives:
+
+```shell
+sha256sum --check --ignore-missing SHA256SUMS   # shasum -a 256 on macOS
+```
 
 ## Inspect a database
 

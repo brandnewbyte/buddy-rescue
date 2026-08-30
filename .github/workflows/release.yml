@@ -9,8 +9,38 @@ permissions:
   contents: read
 
 jobs:
+  # Fails a bad tag in seconds, before three platforms spend minutes building
+  # something that will not be published.
+  guard:
+    name: Check tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # merge-base below needs history; a tag checkout is shallow by default.
+          fetch-depth: 0
+
+      - name: Check tag is on main
+        run: |
+          git fetch --no-tags --quiet origin main
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "Tag $GITHUB_REF_NAME is not on main. Release tags come from main."
+            exit 1
+          fi
+
+      # The version the binary reports comes from Cargo.toml, not from the tag.
+      - name: Check tag matches crate version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          VERSION=$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)
+          if [ "$TAG" != "$VERSION" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match Cargo.toml version $VERSION"
+            exit 1
+          fi
+
   build:
     name: Build ${{ matrix.target }}
+    needs: guard
     strategy:
       matrix:
         include:
@@ -27,9 +57,9 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
 
       - name: Build Linux or Windows
         if: matrix.target != 'universal-apple-darwin'
@@ -72,7 +102,7 @@ jobs:
           Copy-Item README.md, LICENSE-MIT, LICENSE-APACHE $staging
           Compress-Archive -Path $staging -DestinationPath "dist/${{ matrix.archive }}"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: release-${{ matrix.target }}
           path: dist/${{ matrix.archive }}
@@ -83,16 +113,31 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write     # create the release
+      id-token: write     # sign the attestation
+      attestations: write # record it
 
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           pattern: release-*
           merge-multiple: true
           path: dist
 
-      - uses: softprops/action-gh-release@v2
+      - name: Generate checksums
+        working-directory: dist
+        run: sha256sum buddy-rescue-* > SHA256SUMS
+
+      # Publicly verifiable provenance for the exact bytes uploaded below:
+      #   gh attestation verify <file> --repo brandnewbyte/buddy-rescue
+      # Attesting through the checksums file keeps SHA256SUMS and the
+      # attestation describing one identical set of artifacts.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
+        with:
+          subject-checksums: dist/SHA256SUMS
+
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
           files: dist/*
           generate_release_notes: true
