@@ -2,7 +2,7 @@
 name = "buddy-rescue"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.87"
 description = "Standalone inspection and recovery tool for Buddy password vaults"
 authors = ["Brand New Byte LLC"]
 license = "MIT OR Apache-2.0"
